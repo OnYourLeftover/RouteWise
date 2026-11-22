@@ -23,6 +23,7 @@ matplotlib.use("Agg")  # draw off-screen (works in Streamlit and on servers)
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgb
+from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 # ---------------------------------------------------------------------------
@@ -46,20 +47,20 @@ ASTAR_COLOR = EXPLORED
 GBFS_COLOR = TRAFFIC_LOW
 
 
-def _xy(node):
+def _xy(node: tuple[int, int]) -> tuple[int, int]:
     """(row, col) -> (x, y) for plotting. x = column, y = row."""
     row, col = node
     return col, row
 
 
-def _traffic_level(multiplier, lowest, highest):
+def _traffic_level(multiplier: float, lowest: float, highest: float) -> float:
     """0.0 for the lightest traffic on the map, 1.0 for the heaviest."""
     if highest <= lowest:
         return 0.0
     return (multiplier - lowest) / (highest - lowest)
 
 
-def _traffic_color(level):
+def _traffic_color(level: float) -> tuple[float, float, float]:
     """Blend light orange (level 0) -> dark orange (level 1)."""
     low, high = to_rgb(TRAFFIC_LOW), to_rgb(TRAFFIC_HIGH)
     return tuple(a + (b - a) * level for a, b in zip(low, high))
@@ -68,7 +69,7 @@ def _traffic_color(level):
 # ---------------------------------------------------------------------------
 # Function 1: grid figure
 # ---------------------------------------------------------------------------
-def draw_grid(graph, depot, order, legs=None, explored=None, title=""):
+def draw_grid(graph, depot, order, legs=None, explored=None, title="") -> Figure:
     """Draw the grid city with roads, explored nodes, route, stops and depot."""
     rows, cols = graph.rows, graph.cols
 
@@ -194,7 +195,7 @@ def draw_grid(graph, depot, order, legs=None, explored=None, title=""):
 # ---------------------------------------------------------------------------
 # Function 2: A* vs GBFS bar chart
 # ---------------------------------------------------------------------------
-def comparison_chart(plan_astar, plan_gbfs):
+def comparison_chart(plan_astar, plan_gbfs) -> Figure:
     """
     A* vs GBFS on three metrics: total cost, total nodes explored, total time (ms).
 
@@ -257,29 +258,3 @@ def comparison_chart(plan_astar, plan_gbfs):
 
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     return fig
-
-
-# ---------------------------------------------------------------------------
-# Demo: run "python viz.py" from the project root (needs core/ to be in place)
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    from core.graph import make_random_grid, random_stops
-    from core.multistop import order_stops, plan_route
-
-    graph = make_random_grid(rows=20, cols=20, seed=0)
-    depot = (0, 0)
-    order = order_stops(depot, random_stops(graph, k=5, seed=0, exclude=[depot]))
-
-    # Fair comparison: same order, graph and heuristic for both algorithms
-    plan_a = plan_route(graph, depot, order, "astar", "manhattan")
-    plan_g = plan_route(graph, depot, order, "gbfs", "manhattan")
-
-    # Explored nodes of every A* leg
-    explored = [n for leg in plan_a["legs"] for n in leg["explored_order"]]
-
-    draw_grid(graph, depot, order, plan_a["legs"], explored,
-              "Delivery Route (A*, manhattan)").savefig(
-        "sample_grid.png", dpi=150, facecolor=BG)
-    comparison_chart(plan_a, plan_g).savefig(
-        "sample_comparison.png", dpi=150, facecolor=BG)
-    print("Saved sample_grid.png and sample_comparison.png")
