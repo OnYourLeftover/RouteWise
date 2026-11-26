@@ -49,16 +49,23 @@ class GridGraph:
         if abs(u[0] - v[0]) + abs(u[1] - v[1]) != 1:
             raise ValueError(f"nodes {u} and {v} are not adjacent")
 
+    def _effective_cost(self, e: Edge) -> float:
+        return self._base.get(e, 1.0) * self._traffic.get(e, 1.0)
+
     # ---- queries -------------------------------------------------------
     def neighbors(self, node: Node) -> list[tuple[Node, float]]:
         """(neighbor, effective_cost) pairs in fixed order: up, right, down, left."""
         if not self.in_bounds(node):
             raise ValueError(f"node {node} is out of bounds")
         result: list[tuple[Node, float]] = []
+        row, col = node
         for dr, dc in _DIRECTIONS:
-            nb = (node[0] + dr, node[1] + dc)
-            if self.in_bounds(nb) and edge(node, nb) not in self._blocked:
-                result.append((nb, self.cost(node, nb)))
+            neighbor = (row + dr, col + dc)
+            if not self.in_bounds(neighbor):
+                continue
+            e = edge(node, neighbor)
+            if e not in self._blocked:
+                result.append((neighbor, self._effective_cost(e)))
         return result
 
     def cost(self, u: Node, v: Node) -> float:
@@ -67,7 +74,7 @@ class GridGraph:
         e = edge(u, v)
         if e in self._blocked:
             raise ValueError(f"edge {(u, v)} is blocked")
-        return self._base.get(e, 1.0) * self._traffic.get(e, 1.0)
+        return self._effective_cost(e)
 
     def traffic(self, u: Node, v: Node) -> float:
         self._check_edge(u, v)

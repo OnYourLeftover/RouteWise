@@ -1,8 +1,7 @@
 """
 viz.py - Role C (UI & Visualization), Smart Delivery Route Optimizer
 
-Follows SPEC.md section 9. Both functions return a matplotlib Figure, which
-app.py can show with st.pyplot(fig).
+Follows SPEC.md section 9. Both functions return a Matplotlib Figure for display.
 
     draw_grid(graph, depot, order, legs=None, explored=None, title="")
     comparison_chart(plan_astar, plan_gbfs)
@@ -17,34 +16,34 @@ Data used (from SPEC.md):
               "total_nodes_explored" (int) and "total_time_ms" (float)
 """
 
-import matplotlib
+from collections.abc import Collection
 
-matplotlib.use("Agg")  # draw off-screen (works in Streamlit and on servers)
-
-import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.collections import LineCollection
 from matplotlib.colors import to_rgb
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-# ---------------------------------------------------------------------------
-# Colour theme (Dark Tech)
-# ---------------------------------------------------------------------------
-BG = "#101827"            # main background
-PANEL = "#1E293B"         # grid / panel background
-DEPOT = "#000000"         # depot fill (drawn with a white border)
-STOP = "#A78BFA"          # delivery stops
-EXPLORED = "#38BDF8"      # explored nodes
-ROUTE = "#22C55E"         # final route
-BLOCKED = "#EF4444"       # blocked roads
-TRAFFIC_LOW = "#F97316"   # light traffic
-TRAFFIC_HIGH = "#C2410C"  # heavy traffic
-TEXT = "#F8FAFC"          # main text
-SUBTEXT = "#94A3B8"       # secondary text
-ROAD = "#334155"          # normal road lines (a little lighter than PANEL)
+from core.graph import GridGraph, Node
 
-# Bar colours in the comparison chart (as in the reference image)
-ASTAR_COLOR = EXPLORED
-GBFS_COLOR = TRAFFIC_LOW
+# ---------------------------------------------------------------------------
+# Chart palette
+# ---------------------------------------------------------------------------
+BG = "#FFFFFF"
+PANEL = "#F3F7FA"
+DEPOT = "#10151E"
+STOP = "#6741A3"
+EXPLORED = "#137BA6"
+ROUTE = "#078255"
+BLOCKED = "#C33C4B"
+TRAFFIC_LOW = "#E18D31"
+TRAFFIC_HIGH = "#A34912"
+TEXT = "#15283B"
+SUBTEXT = "#526479"
+ROAD = "#C9D4DF"
+
+ASTAR_COLOR = "#126F79"
+GBFS_COLOR = "#AC571E"
 
 
 def _xy(node: tuple[int, int]) -> tuple[int, int]:
@@ -69,11 +68,16 @@ def _traffic_color(level: float) -> tuple[float, float, float]:
 # ---------------------------------------------------------------------------
 # Function 1: grid figure
 # ---------------------------------------------------------------------------
-def draw_grid(graph, depot, order, legs=None, explored=None, title="") -> Figure:
+def draw_grid(graph: GridGraph, depot: Node, order: list[Node],
+              legs: list[dict] | None = None, explored: list[Node] | None = None,
+              title: str = "", *, active_leg: int | None = None, show_all_legs: bool = True,
+              unreachable_stops: Collection[Node] = ()) -> Figure:
     """Draw the grid city with roads, explored nodes, route, stops and depot."""
     rows, cols = graph.rows, graph.cols
 
-    fig, ax = plt.subplots(figsize=(10, 7.5))
+    fig = Figure(figsize=(7, 7))
+    FigureCanvasAgg(fig)
+    ax = fig.subplots()
     fig.patch.set_facecolor(BG)
     ax.set_facecolor(PANEL)
 
@@ -87,59 +91,67 @@ def draw_grid(graph, depot, order, legs=None, explored=None, title="") -> Figure
 
     # --- 1. Roads: normal, traffic, blocked ----------------------------------
     all_edges = graph.edges()
-    # Range of traffic multipliers on this map (only roads with traffic > 1.0)
-    jams = [graph.traffic(u, v) for u, v in all_edges if graph.traffic(u, v) > 1.0]
-    lowest, highest = min(jams, default=1.0), max(jams, default=1.0)
-
+    open_segments, blocked_segments, traffic_segments, multipliers = [], [], [], []
     for u, v in all_edges:
-        (x1, y1), (x2, y2) = _xy(u), _xy(v)
-
+        segment = (_xy(u), _xy(v))
         if graph.is_blocked(u, v):
-            # Blocked road: red dashed line
-            ax.plot([x1, x2], [y1, y2], color=BLOCKED, linestyle="--",
-                    linewidth=max(1.2, 0.09 * cell), zorder=2)
+            blocked_segments.append(segment)
             continue
 
         multiplier = graph.traffic(u, v)
         if multiplier > 1.0:
-            # Traffic: orange, darker and thicker for a higher multiplier
-            level = _traffic_level(multiplier, lowest, highest)
-            ax.plot([x1, x2], [y1, y2], color=_traffic_color(level),
-                    linewidth=max(1.5, (0.08 + 0.12 * level) * cell),
-                    solid_capstyle="round", zorder=2)
+            traffic_segments.append(segment)
+            multipliers.append(multiplier)
         else:
-            # Normal road: faint line
-            ax.plot([x1, x2], [y1, y2], color=ROAD, linewidth=0.8, zorder=1)
+            open_segments.append(segment)
+
+    ax.add_collection(LineCollection(open_segments, colors=ROAD, linewidths=0.75, zorder=1))
+    if multipliers:
+        lowest, highest = min(multipliers), max(multipliers)
+        levels = [_traffic_level(multiplier, lowest, highest) for multiplier in multipliers]
+        ax.add_collection(LineCollection(
+            traffic_segments, colors=[_traffic_color(level) for level in levels],
+            linewidths=[max(1.3, (0.06 + 0.08 * level) * cell) for level in levels],
+            capstyle="round", zorder=2,
+        ))
+    ax.add_collection(LineCollection(blocked_segments, colors=BLOCKED, linestyles="--",
+                                     linewidths=max(0.95, 0.065 * cell), zorder=2))
 
     # --- 2. Explored nodes ---------------------------------------------------
     if explored:
         points = [_xy(n) for n in explored]
         ax.scatter([p[0] for p in points], [p[1] for p in points],
-                   s=explored_size, color=EXPLORED, alpha=0.9,
+                   s=explored_size, color=EXPLORED, alpha=0.55,
                    edgecolors="none", zorder=3)
+        ax.scatter(*points[-1], s=1.5 * explored_size, facecolors="none", edgecolors=EXPLORED,
+                   linewidths=1.6, zorder=5)
 
     # --- 3. Final route: the path of every leg that was found ----------------
-    if legs:
-        for leg in legs:
-            path = leg.get("path", [])
-            if not leg.get("found", False) or not path:
-                continue  # unreachable leg: nothing to draw
-            points = [_xy(n) for n in path]
-            ax.plot([p[0] for p in points], [p[1] for p in points],
-                    color=ROUTE, linewidth=route_width,
-                    solid_capstyle="round", solid_joinstyle="round", zorder=4)
+    route_style = "--" if unreachable_stops else "-"
+    for index, leg in enumerate(legs or []):
+        if not leg["found"] or not leg["path"]:
+            continue
+        highlight = active_leg is None or index == active_leg
+        if not (show_all_legs or highlight):
+            continue
+        x, y = zip(*map(_xy, leg["path"]))
+        ax.plot(x, y, color=ROUTE, linestyle=route_style,
+                linewidth=route_width if highlight else 0.7 * route_width,
+                alpha=1 if highlight else 0.55, solid_capstyle="round", zorder=4 if highlight else 3.5)
 
     # --- 4. Delivery stops, numbered in visit order --------------------------
     for number, stop in enumerate(order, start=1):
         x, y = _xy(stop)
-        ax.scatter(x, y, s=stop_size, color=STOP, edgecolors=TEXT,
-                   linewidths=1.2, zorder=5)
-        ax.text(x, y, str(number), color=BG, fontsize=number_font,
+        unreachable = stop in unreachable_stops
+        ax.scatter(x, y, s=stop_size, marker="D" if unreachable else "o",
+                   color=BG if unreachable else STOP, edgecolors=BLOCKED if unreachable else BG,
+                   linewidths=1.2, zorder=6)
+        ax.text(x, y, str(number), color=BLOCKED if unreachable else BG, fontsize=number_font,
                 fontweight="bold", ha="center", va="center", zorder=6)
 
     # --- 5. Depot: black square with a white border --------------------------
     x, y = _xy(depot)
-    ax.scatter(x, y, s=stop_size, marker="s", color=DEPOT, edgecolors=TEXT,
+    ax.scatter(x, y, s=stop_size, marker="s", color=DEPOT, edgecolors=BG,
                linewidths=1.8, zorder=6)
 
     # --- 6. Axes: (0, 0) at the top-left, labels, boundary -------------------
@@ -147,8 +159,8 @@ def draw_grid(graph, depot, order, legs=None, explored=None, title="") -> Figure
     ax.set_ylim(rows - 0.5, -0.5)     # reversed so row 0 is at the top
     ax.set_aspect("equal")
 
-    ax.set_xticks(range(cols))
-    ax.set_yticks(range(rows))
+    ax.set_xticks(range(0, cols, 2 if cols > 20 else 1))
+    ax.set_yticks(range(0, rows, 2 if rows > 20 else 1))
     tick_font = 10 if max(rows, cols) <= 20 else 8
     ax.tick_params(colors=SUBTEXT, labelsize=tick_font, length=3)
     ax.xaxis.tick_top()               # column numbers above the grid, like a table
@@ -157,45 +169,40 @@ def draw_grid(graph, depot, order, legs=None, explored=None, title="") -> Figure
     ax.set_ylabel("Row", color=TEXT, fontsize=11, labelpad=8)
 
     for spine in ax.spines.values():  # the frame is the grid boundary
-        spine.set_color(SUBTEXT)
-        spine.set_linewidth(1.5)
+        spine.set_color(ROAD)
+        spine.set_linewidth(1)
 
-    fig.suptitle(title or "Delivery Grid", color=TEXT, fontsize=15,
-                 fontweight="bold", x=0.40, y=0.97)
+    if title:
+        fig.suptitle(title, color=TEXT, fontsize=15, fontweight="bold", y=0.98)
 
-    # --- 7. Legend, outside the grid on the right ----------------------------
     handles = [
-        Line2D([], [], marker="s", linestyle="", markersize=12,
-               markerfacecolor=DEPOT, markeredgecolor=TEXT, label="Depot"),
-        Line2D([], [], marker="o", linestyle="", markersize=12,
-               markerfacecolor=STOP, markeredgecolor=TEXT,
-               label="Delivery stop\n(number = visit order)"),
-        Line2D([], [], marker="o", linestyle="", markersize=10,
+        Line2D([], [], marker="s", linestyle="", markersize=8,
+               markerfacecolor=DEPOT, markeredgecolor=BG, label="Depot"),
+        Line2D([], [], marker="o", linestyle="", markersize=8,
+               markerfacecolor=STOP, markeredgecolor=BG, label="Numbered stop"),
+        Line2D([], [], marker="o", linestyle="", markersize=8,
                markerfacecolor=EXPLORED, markeredgecolor="none",
-               label="Explored node"),
-        Line2D([], [], color=ROUTE, linewidth=4, label="Final route"),
+               label="Explored"),
+        Line2D([], [], color=ROUTE, linewidth=3, linestyle=route_style,
+               label="Partial leg" if unreachable_stops else "Route"),
         Line2D([], [], color=BLOCKED, linewidth=2, linestyle="--",
                label="Blocked road"),
-        Line2D([], [], color=TRAFFIC_LOW, linewidth=3, label="Traffic (low)"),
-        Line2D([], [], color=TRAFFIC_HIGH, linewidth=6, label="Traffic (high)"),
+        Line2D([], [], color=TRAFFIC_LOW, linewidth=2, label="Light traffic"),
+        Line2D([], [], color=TRAFFIC_HIGH, linewidth=4, label="Heavy traffic"),
     ]
-    legend = ax.legend(handles=handles, loc="upper left",
-                       bbox_to_anchor=(1.04, 1.0), frameon=True,
-                       facecolor=PANEL, edgecolor=SUBTEXT, labelcolor=TEXT,
-                       fontsize=10, title="Legend", borderpad=1,
-                       labelspacing=1.1)
-    legend.get_title().set_color(TEXT)
-    legend.get_title().set_fontweight("bold")
-
-    # Leave space for the legend (tight_layout does not account for it)
-    fig.subplots_adjust(left=0.07, right=0.72, top=0.86, bottom=0.04)
+    if unreachable_stops:
+        handles.append(Line2D([], [], marker="D", linestyle="", markersize=8,
+                              markerfacecolor=BG, markeredgecolor=BLOCKED, label="Unreachable stop"))
+    fig.legend(handles=handles, loc="lower center", ncols=4, frameon=False,
+               labelcolor=TEXT, fontsize=9, columnspacing=1.3, bbox_to_anchor=(0.53, 0.025))
+    fig.subplots_adjust(left=0.11, right=0.97, top=0.88 if title else 0.93, bottom=0.13)
     return fig
 
 
 # ---------------------------------------------------------------------------
 # Function 2: A* vs GBFS bar chart
 # ---------------------------------------------------------------------------
-def comparison_chart(plan_astar, plan_gbfs) -> Figure:
+def comparison_chart(plan_astar: dict, plan_gbfs: dict) -> Figure:
     """
     A* vs GBFS on three metrics: total cost, total nodes explored, total time (ms).
 
@@ -207,12 +214,14 @@ def comparison_chart(plan_astar, plan_gbfs) -> Figure:
     metrics = [
         ("Total Route Cost", "total_cost"),
         ("Nodes Explored", "total_nodes_explored"),
-        ("Total Time (ms)", "total_time_ms"),
+        ("Search Time (ms)", "total_time_ms"),
     ]
     names = ["A*", "GBFS"]
     colors = [ASTAR_COLOR, GBFS_COLOR]
 
-    fig, axes = plt.subplots(1, 3, figsize=(10, 4.8))
+    fig = Figure(figsize=(10, 3.8))
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(1, 3)
     fig.patch.set_facecolor(BG)
 
     for ax, (label, key) in zip(axes, metrics):
@@ -227,8 +236,10 @@ def comparison_chart(plan_astar, plan_gbfs) -> Figure:
         for x, value, height in zip([0, 1], values, heights):
             if value is None:
                 text = "N/A"
-            elif isinstance(value, int):
-                text = str(value)
+            elif key == "total_nodes_explored":
+                text = f"{value:,}"
+            elif key == "total_time_ms":
+                text = f"{value:.2f}"
             else:
                 text = f"{value:.1f}"
             ax.text(x, height + top * 0.03, text, ha="center", va="bottom",
@@ -248,13 +259,5 @@ def comparison_chart(plan_astar, plan_gbfs) -> Figure:
         for side in ("left", "bottom"):
             ax.spines[side].set_color(SUBTEXT)
 
-    # One shared legend for the whole figure
-    handles = [Line2D([], [], color=c, linewidth=8, label=n)
-               for n, c in zip(names, colors)]
-    fig.legend(handles=handles, loc="upper right", ncol=2, frameon=True,
-               facecolor=PANEL, edgecolor=SUBTEXT, labelcolor=TEXT, fontsize=10)
-    fig.suptitle("A* vs GBFS Comparison", color=TEXT, fontsize=15,
-                 fontweight="bold", x=0.05, ha="left", y=0.97)
-
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.tight_layout()
     return fig
