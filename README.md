@@ -4,14 +4,25 @@ Plan a delivery round trip through a seeded grid city with traffic and road clos
 
 ## Run locally
 
-From the repository root with Python 3.11 or newer:
+Run these commands from the RouteWise repository root. You’ll need Python 3.11 or newer.
 
-```sh
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
+### Windows (PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Open the local URL printed by Streamlit.
+### macOS or Linux
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m streamlit run app.py
+```
+
+Open the URL printed by Streamlit, usually [http://localhost:8501](http://localhost:8501). Press `Ctrl+C` in the terminal to stop the app.
 
 ## Explore a route
 
@@ -24,9 +35,18 @@ Open the local URL printed by Streamlit.
 
 ## Test and benchmark
 
+On Windows (PowerShell):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/
+.\.venv\Scripts\python.exe benchmark.py
+```
+
+On macOS or Linux:
+
 ```sh
-python -m pytest tests/
-python benchmark.py
+.venv/bin/python -m pytest tests/
+.venv/bin/python benchmark.py
 ```
 
 The tests exercise both search algorithms and the Streamlit controls. The benchmark command regenerates `data/benchmark_results.csv` from five timing trials per seed and configuration. Search times vary by machine.
