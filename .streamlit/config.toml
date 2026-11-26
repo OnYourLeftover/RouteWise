@@ -1,7 +1,13 @@
-[theme]
-base = "light"
+[theme.light]
 primaryColor = "#126F79"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F1F5F8"
 textColor = "#15283B"
+font = "sans serif"
+
+[theme.dark]
+primaryColor = "#56C8C1"
+backgroundColor = "#101827"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#F8FAFC"
 font = "sans serif"

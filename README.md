@@ -24,6 +24,8 @@ python3 -m venv .venv
 
 Open the URL printed by Streamlit, usually [http://localhost:8501](http://localhost:8501). Press `Ctrl+C` in the terminal to stop the app.
 
+Use the **⋮** menu in the top right to choose **Light**, **Dark**, or **System** under **Theme**. System follows your browser or device preference.
+
 ## Explore a route
 
 1. Set the seed, grid size, traffic, blocked roads, depot, and stop count. Choose a heuristic and press **Run**. The same settings and stop shuffle reproduce the same city and route.

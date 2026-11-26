@@ -16,7 +16,9 @@ Data used (from SPEC.md):
               "total_nodes_explored" (int) and "total_time_ms" (float)
 """
 
+import re
 from collections.abc import Collection
+from io import StringIO
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import LineCollection
@@ -32,6 +34,7 @@ from core.graph import GridGraph, Node
 BG = "#FFFFFF"
 PANEL = "#F3F7FA"
 DEPOT = "#10151E"
+DEPOT_BORDER = "#CBD5E1"
 STOP = "#6741A3"
 EXPLORED = "#137BA6"
 ROUTE = "#078255"
@@ -44,6 +47,42 @@ ROAD = "#C9D4DF"
 
 ASTAR_COLOR = "#126F79"
 GBFS_COLOR = "#AC571E"
+
+_DARK_COLORS = {
+    BG: "#101827",
+    PANEL: "#1E293B",
+    TEXT: "#F8FAFC",
+    SUBTEXT: "#A7B6C8",
+    ROAD: "#475569",
+    DEPOT_BORDER: "#F8FAFC",
+    STOP: "#B9A4FA",
+    EXPLORED: "#53C7EB",
+    ROUTE: "#4ADE80",
+    BLOCKED: "#F87171",
+    ASTAR_COLOR: "#56C8C1",
+    GBFS_COLOR: "#FB923C",
+}
+_DARK_COLORS = {light.lower(): dark for light, dark in _DARK_COLORS.items()}
+_SVG_COLOR = re.compile(r"(fill|stroke): (#[0-9a-f]{6})\b")
+
+
+def themed_svg(fig: Figure) -> str:
+    """Serialize a figure that follows the embedding page's color scheme."""
+    with StringIO() as output:
+        fig.savefig(output, format="svg", metadata={"Date": None})
+        svg = output.getvalue()
+
+    def adaptive_color(match: re.Match[str]) -> str:
+        property_name, light = match.groups()
+        if light in _DARK_COLORS:
+            return f"{property_name}: var(--routewise-{light[1:]}, {light})"
+        return match[0]
+
+    svg = _SVG_COLOR.sub(adaptive_color, svg)
+    colors = "".join(f"--routewise-{light[1:]}: {dark};" for light, dark in _DARK_COLORS.items())
+    style = f"<style>@media (prefers-color-scheme: dark) {{ :root {{ {colors} }} }}</style>"
+    root_end = svg.index(">", svg.index("<svg")) + 1
+    return svg[:root_end] + style + svg[root_end:]
 
 
 def _xy(node: tuple[int, int]) -> tuple[int, int]:
@@ -151,7 +190,7 @@ def draw_grid(graph: GridGraph, depot: Node, order: list[Node],
 
     # --- 5. Depot: black square with a white border --------------------------
     x, y = _xy(depot)
-    ax.scatter(x, y, s=stop_size, marker="s", color=DEPOT, edgecolors=BG,
+    ax.scatter(x, y, s=stop_size, marker="s", color=DEPOT, edgecolors=DEPOT_BORDER,
                linewidths=1.8, zorder=6)
 
     # --- 6. Axes: (0, 0) at the top-left, labels, boundary -------------------
@@ -177,7 +216,7 @@ def draw_grid(graph: GridGraph, depot: Node, order: list[Node],
 
     handles = [
         Line2D([], [], marker="s", linestyle="", markersize=8,
-               markerfacecolor=DEPOT, markeredgecolor=BG, label="Depot"),
+               markerfacecolor=DEPOT, markeredgecolor=DEPOT_BORDER, label="Depot"),
         Line2D([], [], marker="o", linestyle="", markersize=8,
                markerfacecolor=STOP, markeredgecolor=BG, label="Numbered stop"),
         Line2D([], [], marker="o", linestyle="", markersize=8,

@@ -22,7 +22,7 @@ from matplotlib.figure import Figure
 from core.graph import GridGraph, Node, make_random_grid, random_stops
 from core.heuristics import HEURISTICS
 from core.multistop import order_stops, plan_route
-from viz import comparison_chart, draw_grid
+from viz import comparison_chart, draw_grid, themed_svg
 
 BENCHMARK_CSV = Path(__file__).parent / "data" / "benchmark_results.csv"
 BENCHMARK_COLUMNS = ["seed", "algo", "heuristic", "complete", "total_cost",
@@ -51,10 +51,8 @@ DEFAULT_SCENARIO = {
 # Small helpers
 # ---------------------------------------------------------------------------
 def show_figure(fig: Figure) -> None:
-    """Render a figure at a readable size without relying on pyplot state."""
-    with BytesIO() as png:
-        fig.savefig(png, format="png", dpi=120)
-        st.image(png.getvalue(), width="stretch")
+    """Display a chart that updates when the app theme changes."""
+    st.image(themed_svg(fig), width="stretch")
 
 
 def node_name(node: Node, depot: Node, order: list[Node]) -> str:
