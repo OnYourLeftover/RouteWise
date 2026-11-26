@@ -183,7 +183,7 @@ def comparison_tab(plan_astar: dict, plan_gbfs: dict, heuristic: str) -> None:
     table = pd.DataFrame({
         "Metric": ["Total cost", "Nodes explored", "Runtime (ms)", "Cost difference vs A*"],
         "A*": [format_cost(cost_a), str(plan_astar["total_nodes_explored"]),
-               f"{plan_astar['total_time_ms']:.2f}", "0.0"],
+               f"{plan_astar['total_time_ms']:.2f}", "0.0" if cost_a is not None else "N/A"],
         "GBFS": [format_cost(cost_g), str(plan_gbfs["total_nodes_explored"]),
                  f"{plan_gbfs['total_time_ms']:.2f}", diff_text],
     })
@@ -229,6 +229,7 @@ def benchmark_tab() -> None:
 # Page
 # ---------------------------------------------------------------------------
 def main() -> None:
+    """Run the RouteWise page and show results only for the current settings."""
     st.set_page_config(page_title="RouteWise", layout="wide")
     st.title("RouteWise")
 
@@ -244,9 +245,10 @@ def main() -> None:
     if run_settings is None:
         route.info("Choose settings in the sidebar and press Run.")
         comparison.info("Choose settings in the sidebar and press Run.")
+    elif run_settings != settings:
+        route.info("Settings changed. Press Run to update the results.")
+        comparison.info("Settings changed. Press Run to update the results.")
     else:
-        if run_settings != settings:
-            st.caption("Settings changed. Press Run to update the results.")
         try:
             graph, order, plan_astar, plan_gbfs = compute(run_settings)
         except ValueError as error:
